@@ -24,8 +24,8 @@
 - 2026-08-06: Dedup fields are in plaintext header outside the encrypted envelope, readable by relays.
 - 2026-08-06: IncidentReport data class updated with latitude, longitude, ttl (default 7), reportId (UUID v4) to match wire format.
 - 2026-08-06: GpsCapture uses LocationManager (no Play Services) for disaster resilience.
-- 2026-08-06: Encryption uses AES-GCM instead of ChaCha20-Poly1305 because minSdk=26 and ChaCha20 requires API 28+. AES-GCM provides equivalent AEAD guarantees.
-- 2026-08-06: PayloadPipeline encrypts only the notes portion (bytes 42+). The 42-byte header stays plaintext for relay dedup.
+- 2026-08-06: DEVIATION FROM SPEC: The project spec mandates Noise_XX_25519_ChaChaPoly_SHA256 for payload encryption. However, the implemented algorithm in PayloadEncryptor is AES-GCM. This was chosen because minSdk=26 and ChaCha20 requires Android API 28+ via javax.crypto. AES-GCM provides equivalent AEAD guarantees without external dependencies, but this is a deviation from the locked spec.
+- 2026-08-06: The wire format uses a plaintext-header / encrypted-body split. The first 42 bytes (header) stay plaintext, and only the notes portion (bytes 42+) is encrypted. This design resolves the earlier open question of how relays compute dedup cluster keys without holding decryption keys.
 - 2026-08-06: Static encryption key uses a placeholder (all 42 bytes). Needs proper key provisioning before deployment.
 - 2026-08-06: Dashboard uses lucide-react for icons (emergency type indicators). Only external dependency beyond React/Vite/Tailwind stack.
 - 2026-08-06: Seed script uses node-fetch@3 for POSTing test data to the ingest server.

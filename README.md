@@ -4,7 +4,7 @@ An off-grid, disaster-resilient communication mesh designed for extreme emergenc
 
 This system prioritizes absolute utilitarian reliability, high-contrast usability in stressful environments, and aggressive power conservation over everything else.
 
-## 🏗️ System Architecture
+## System Architecture
 
 The mesh operates across three distinct hardware tiers, ensuring that data can physically traverse a disaster zone via short-range and long-range RF without relying on the internet until the absolute last mile.
 
@@ -25,7 +25,7 @@ The mesh operates across three distinct hardware tiers, ensuring that data can p
     *   **Tech:** React, Vite, TailwindCSS, Express.js.
     *   **Behavior:** Decrypts incoming LoRa payloads, unpacks the binary structs, and displays them on a dark, high-contrast operational dashboard. Reports are mathematically weighted and sorted based on severity and network corroboration.
 
-## ✨ Key Technical Features
+## Key Technical Features
 
 ### 1. Power-Tier State Machine
 Disaster scenarios require phones to last days. The Android app implements a pure, testable state machine that dynamically alters radio duty cycles:
@@ -43,7 +43,7 @@ To fit within strict BLE advertisement and LoRa packet limits (~250 bytes), the 
 *   **Phone-Side:** Maintains a capped LRU cache of UUIDs to prevent the BLE mesh from endlessly echoing the same report.
 *   **Relay-Side:** Computes a "Cluster Key" `(Lat + Lon + Type + Time Bucket)` to deduplicate visually similar reports from *different* phones witnessing the same event, incrementing a `corroborationCount` instead of spamming the command center.
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 ├── docs/                # Architecture diagrams, testing plans, and progress logs
@@ -52,7 +52,7 @@ To fit within strict BLE advertisement and LoRa packet limits (~250 bytes), the 
 └── command-dashboard/   # Tier 3: React Dashboard & Express Ingest Server
 ```
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Command Dashboard (Tier 3)
 Requires Node.js.
@@ -76,6 +76,10 @@ Requires VS Code with the PlatformIO extension and an ESP32 wired to an SX1276/R
 2. Verify pinouts in `src/config.h`.
 3. Build and Upload to the ESP32.
 
-## 🧪 Current Status
-*   **Phase 0-4:** ✅ Complete (App UI, Firmware, Crypto Pipeline, Mesh Transport, Dashboard).
-*   **Testing:** 🔄 Currently executing the multi-stage hardware testing plan (see `docs/TESTING.md`).
+## Current Status
+*   **Implementation (Phases 0-4):** Code written for app UI, firmware,
+    crypto pipeline, mesh transport, and dashboard — not yet validated
+    end-to-end.
+*   **Testing:** Stage 1/6 complete (dashboard, mock data). Stages 2-6
+    pending hardware/device availability — see `docs/TESTING.md` and
+    `docs/PROGRESS.md` for exact status.

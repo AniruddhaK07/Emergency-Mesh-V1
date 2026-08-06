@@ -221,5 +221,7 @@ reflected in the serialization code in the same commit.
 | 42          | notes             | 0–256         | UTF-8 string, max 256 bytes              |
 
 **Total fixed header:** 42 bytes. **Max payload (with notes):** 298 bytes.
-After LZ4 compression and Noise encryption, expect ~300–350 bytes worst case
-for a full payload — well within BLE advertisement + LoRa packet limits.
+
+**Security Split (Implementation Detail):** The first 42 bytes (the fixed header) are transmitted in plaintext so that relays can read dedup fields (like `reportId`) and mutate routing fields (like `ttl` and `corroborationCount`) without holding decryption keys. Only the `notes` field (bytes 42+) is compressed with LZ4 and encrypted with AES-GCM.
+
+After LZ4 compression and AES-GCM encryption of the notes portion, expect ~300–350 bytes worst case for a full payload — well within BLE advertisement + LoRa packet limits.
