@@ -6,10 +6,12 @@
 
 ## Stage 2 — Phone app, solo (needs 1 phone)
 - [ ] `adb install` onto a real device — Android emulators do not support real BLE radio between instances, so this cannot be emulator-only past this stage.
+  - *Status:* Currently blocked. Local environment is missing Android SDK, Gradle, and the Gradle Wrapper, preventing APK builds.
 - Validates: tap-first UI, GPS capture, local queueing, power-tier state machine (mock battery levels for CONSERVE/CRITICAL transitions).
 
 ## Stage 3 — Phone-to-laptop BLE (needs 1 phone + laptop's built-in BLE)
 - [ ] Python script on laptop using `bleak` (cross-platform BLE lib) scans for and decrypts the phone's advertised payload — laptop temporarily holds the Tier 3 key material for this test only.
+  - *Status:* Script implemented in `tests/stage3_test.py`. Execution currently blocked (local laptop Bluetooth radio is disabled/unavailable).
 - Validates: wire format, LZ4 round-trip, Noise handshake + encryption — the whole Phase 2 pipeline — without waiting on any relay hardware.
 
 ## Stage 4 — Phone-to-phone BLE mesh (needs 2 phones)

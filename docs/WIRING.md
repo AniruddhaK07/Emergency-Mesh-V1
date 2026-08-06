@@ -135,7 +135,7 @@ sequenceDiagram
     participant Ser as PayloadSerializer
     participant Pipe as PayloadPipeline
     participant Comp as LZ4 Compressor
-    participant Enc as AES-GCM Encryptor
+    participant Enc as Noise_N Encryptor
     participant BLE as BLE Advertiser
 
     UI->>Ser: IncidentReport data class
@@ -145,8 +145,11 @@ sequenceDiagram
     Pipe->>Comp: Notes bytes only
     Comp->>Comp: LZ4 compress (prepend 4-byte original size)
     Comp->>Enc: Compressed notes
-    Enc->>Enc: AES-GCM encrypt (random 12-byte nonce)
-    Enc->>Pipe: nonce + ciphertext + auth tag
+    Enc->>Enc: Generate ephemeral X25519 keypair
+    Enc->>Enc: DH(ephemeral, Tier3 static pubkey)
+    Enc->>Enc: HKDF-SHA256 derive symmetric key
+    Enc->>Enc: ChaCha20-Poly1305 encrypt (nonce=0, AD=handshake hash)
+    Enc->>Pipe: ephemeral pubkey (32) + ciphertext + Poly1305 tag (16)
     Pipe->>Pipe: Reassemble: plaintext header + encrypted notes
     Pipe->>Pipe: Update notesLength field (offset 40) to encrypted size
     Pipe->>BLE: Final payload (header readable by relays)
@@ -222,6 +225,26 @@ reflected in the serialization code in the same commit.
 
 **Total fixed header:** 42 bytes. **Max payload (with notes):** 298 bytes.
 
-**Security Split (Implementation Detail):** The first 42 bytes (the fixed header) are transmitted in plaintext so that relays can read dedup fields (like `reportId`) and mutate routing fields (like `ttl` and `corroborationCount`) without holding decryption keys. Only the `notes` field (bytes 42+) is compressed with LZ4 and encrypted with AES-GCM.
+**Security Split (Implementation Detail):** The first 42 bytes (the fixed header) are
+transmitted in plaintext so that relays can read dedup fields (like `reportId`) and
+mutate routing fields (like `ttl` and `corroborationCount`) without holding decryption
+keys. Only the `notes` field (bytes 42+) is compressed with LZ4 and encrypted.
 
-After LZ4 compression and AES-GCM encryption of the notes portion, expect ~300–350 bytes worst case for a full payload — well within BLE advertisement + LoRa packet limits.
+**Encrypted Notes Blob Format (Noise_N_25519_ChaChaPoly_SHA256):**
+
+| Offset within blob | Field              | Width (bytes) | Description                                       |
+|--------------------|--------------------|---------------|---------------------------------------------------|
+| 0                  | ephemeral pubkey   | 32            | X25519 ephemeral public key (unique per message)  |
+| 32                 | ciphertext         | variable      | ChaCha20-Poly1305 encrypted (LZ4-compressed notes)|
+| 32 + ct_len        | auth tag           | 16            | Poly1305 authentication tag                       |
+
+The `notesLength` field at header offset 40 stores the total length of this encrypted
+blob (32 + ciphertext_len + 16). Tier 3 uses its static X25519 private key to perform
+DH with the ephemeral public key, derive the symmetric key via HKDF-SHA256, and
+decrypt. Extracting the embedded public key from the APK gives zero decryption
+capability because the key relationship is asymmetric.
+
+After LZ4 compression and Noise_N encryption, expect ~320–370 bytes worst case
+for a full payload (20 bytes more than the previous AES-GCM stub due to the 32-byte
+ephemeral key replacing the 12-byte nonce) — still within BLE extended advertisement
+and LoRa packet limits.
