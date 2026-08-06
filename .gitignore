@@ -1,0 +1,16 @@
+# Node
+node_modules/
+dist/
+.env
+.env.local
+
+# Android / Gradle
+.gradle/
+reporter-app/build/
+reporter-app/app/build/
+local.properties
+.idea/
+*.iml
+
+# PlatformIO
+relay-node/.pio/

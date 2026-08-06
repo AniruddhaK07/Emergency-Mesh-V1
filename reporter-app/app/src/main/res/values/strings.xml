@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Reporter App</string>
+    <string name="btn_trapped">TRAPPED</string>
+    <string name="btn_injured">INJURED</string>
+    <string name="btn_fire">FIRE</string>
+    <string name="btn_need_evac">NEED EVACUATION</string>
+    <string name="severity_low">Low</string>
+    <string name="severity_medium">Medium</string>
+    <string name="severity_high">High</string>
+    <string name="severity_critical">Critical</string>
+    <string name="send_report">SEND REPORT</string>
+    <string name="clear">CLEAR</string>
+    <string name="notes_hint">Notes (optional)</string>
+    <string name="casualty_count">Casualty Count</string>
+    <string name="severity_label">Severity</string>
+</resources>
