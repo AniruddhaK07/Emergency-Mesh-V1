@@ -132,10 +132,10 @@ function noiseNDecrypt(encryptedBlob) {
 
 const EMERGENCY_TYPES = ['TRAPPED', 'INJURED', 'FIRE', 'NEED_EVAC'];
 const SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-const HEADER_SIZE = 42;
+const HEADER_SIZE = 43;
 
 /**
- * Deserialize a full binary payload (42-byte plaintext header + encrypted notes).
+ * Deserialize a full binary payload (43-byte plaintext header + encrypted notes).
  * Decrypts the notes portion using Noise_N, then returns a JSON report object.
  */
 function deserializeBinaryPayload(payloadBuffer) {
@@ -149,17 +149,18 @@ function deserializeBinaryPayload(payloadBuffer) {
   const severity = SEVERITIES[payloadBuffer.readUInt8(2)] || 'LOW';
   const casualtyCount = payloadBuffer.readUInt16LE(3);
   const timestamp = Number(payloadBuffer.readBigInt64LE(5));
-  const latitude = payloadBuffer.readFloatLE(13);
-  const longitude = payloadBuffer.readFloatLE(17);
-  const corroborationCount = payloadBuffer.readUInt16LE(21);
-  const ttl = payloadBuffer.readUInt8(23);
+  const hasLocation = payloadBuffer.readUInt8(13) !== 0;
+  const latitude = payloadBuffer.readFloatLE(14);
+  const longitude = payloadBuffer.readFloatLE(18);
+  const corroborationCount = payloadBuffer.readUInt16LE(22);
+  const ttl = payloadBuffer.readUInt8(24);
 
-  // reportId: 16 bytes at offset 24, big-endian UUID
-  const uuidBytes = payloadBuffer.subarray(24, 40);
+  // reportId: 16 bytes at offset 25, big-endian UUID
+  const uuidBytes = payloadBuffer.subarray(25, 41);
   const hex = uuidBytes.toString('hex');
   const reportId = `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
 
-  const notesLength = payloadBuffer.readUInt16LE(40);
+  const notesLength = payloadBuffer.readUInt16LE(41);
 
   // Decrypt notes
   let notes = '';
@@ -179,7 +180,7 @@ function deserializeBinaryPayload(payloadBuffer) {
 
   return {
     reportId, emergencyType, severity, casualtyCount,
-    notes, timestamp, latitude, longitude,
+    notes, timestamp, hasLocation, latitude, longitude,
     corroborationCount, ttl
   };
 }
@@ -269,7 +270,19 @@ app.post('/api/reports/raw', (req, res) => {
     // update or insert
     const existingIdx = reports.findIndex(r => r.reportId === report.reportId);
     if (existingIdx !== -1) {
-      reports[existingIdx] = report;
+      const existing = reports[existingIdx];
+      // A corroboration-only update has no notes. Preserve existing notes and original identity fields.
+      reports[existingIdx] = {
+        ...existing,
+        ...report,
+        severity: existing.severity,
+        casualtyCount: existing.casualtyCount,
+        hasLocation: existing.hasLocation,
+        latitude: existing.latitude,
+        longitude: existing.longitude,
+        notes: report.notes || existing.notes,
+        corroborationCount: Math.max(existing.corroborationCount || 0, report.corroborationCount || 0)
+      };
     } else {
       reports.push(report);
     }

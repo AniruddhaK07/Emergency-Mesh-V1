@@ -11,6 +11,7 @@ reporter-app/app/build/
 local.properties
 .idea/
 *.iml
+*.apk
 
 # PlatformIO
 relay-node/.pio/

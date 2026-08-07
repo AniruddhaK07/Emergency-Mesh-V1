@@ -8,7 +8,7 @@ import java.nio.ByteOrder
 import java.util.UUID
 
 object PayloadSerializer {
-    const val HEADER_SIZE = 42
+    const val HEADER_SIZE = 43
 
     fun serialize(report: IncidentReport): ByteArray {
         val notesBytes = report.notes.toByteArray(Charsets.UTF_8).take(256).toByteArray()
@@ -20,6 +20,7 @@ object PayloadSerializer {
         buffer.put(report.severity.ordinal.toByte())
         buffer.putShort(report.casualtyCount.toShort())
         buffer.putLong(report.timestamp)
+        buffer.put((if (report.hasLocation) 1 else 0).toByte())
         buffer.putFloat(report.latitude.toFloat())
         buffer.putFloat(report.longitude.toFloat())
         buffer.putShort(report.corroborationCount.toShort())
@@ -45,6 +46,7 @@ object PayloadSerializer {
         val severity = Severity.values()[buffer.get().toInt()]
         val casualtyCount = buffer.short.toInt()
         val timestamp = buffer.long
+        val hasLocation = buffer.get().toInt() != 0
         val latitude = buffer.float.toDouble()
         val longitude = buffer.float.toDouble()
         val corroborationCount = buffer.short.toInt()
@@ -67,6 +69,7 @@ object PayloadSerializer {
             severity = severity,
             notes = notes,
             timestamp = timestamp,
+            hasLocation = hasLocation,
             latitude = latitude,
             longitude = longitude,
             corroborationCount = corroborationCount,

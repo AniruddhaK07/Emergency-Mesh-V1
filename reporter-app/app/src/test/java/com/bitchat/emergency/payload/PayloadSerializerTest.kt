@@ -33,6 +33,7 @@ class PayloadSerializerTest {
         assertEquals(original.severity, deserialized.severity)
         assertEquals(original.notes, deserialized.notes)
         assertEquals(original.timestamp, deserialized.timestamp)
+        assertEquals(original.hasLocation, deserialized.hasLocation)
         assertEquals(original.latitude, deserialized.latitude, 0.0001)
         assertEquals(original.longitude, deserialized.longitude, 0.0001)
         assertEquals(original.corroborationCount, deserialized.corroborationCount)

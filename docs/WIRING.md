@@ -80,10 +80,11 @@ sequenceDiagram
     Relay->>Relay: Compute cluster key for dedup
     Relay->>Relay: Check dedup table
     alt New cluster key
-        Relay->>Relay: Store in dedup table, corroborationCount = 1
+        Relay->>Relay: Store in dedup table (corroborationCount = 1, original reportId)
         Relay->>Cmd: LoRa TX (encrypted blob)
     else Existing cluster key
         Relay->>Relay: Increment corroborationCount
+        Relay->>Relay: Overwrite duplicate's reportId with original
         Relay->>Cmd: LoRa TX (updated corroboration only)
     end
     Cmd->>Cmd: Decrypt with Tier 3 key material
@@ -215,20 +216,21 @@ reflected in the serialization code in the same commit.
 | 2           | severity          | 1             | uint8 enum: 0=Low, 1=Medium, 2=High, 3=Critical |
 | 3           | casualtyCount     | 2             | uint16 LE                                |
 | 5           | timestamp         | 8             | int64 LE — Unix epoch millis             |
-| 13          | latitude          | 4             | float32 LE (IEEE 754)                    |
-| 17          | longitude         | 4             | float32 LE (IEEE 754)                    |
-| 21          | corroborationCount| 2             | uint16 LE — set/incremented by relay     |
-| 23          | ttl               | 1             | uint8 — hop count, decremented per relay |
-| 24          | reportId          | 16            | UUID v4, 128-bit, big-endian             |
-| 40          | notesLength       | 2             | uint16 LE — byte length of notes field   |
-| 42          | notes             | 0–256         | UTF-8 string, max 256 bytes              |
+| 13          | hasLocation       | 1             | uint8 — 1=valid GPS, 0=NULL_LOC          |
+| 14          | latitude          | 4             | float32 LE (IEEE 754)                    |
+| 18          | longitude         | 4             | float32 LE (IEEE 754)                    |
+| 22          | corroborationCount| 2             | uint16 LE — set/incremented by relay     |
+| 24          | ttl               | 1             | uint8 — hop count, decremented per relay |
+| 25          | reportId          | 16            | UUID v4, 128-bit, big-endian             |
+| 41          | notesLength       | 2             | uint16 LE — byte length of notes field   |
+| 43          | notes             | 0–256         | UTF-8 string, max 256 bytes              |
 
-**Total fixed header:** 42 bytes. **Max payload (with notes):** 298 bytes.
+**Total fixed header:** 43 bytes. **Max payload (with notes):** 299 bytes.
 
-**Security Split (Implementation Detail):** The first 42 bytes (the fixed header) are
+**Security Split (Implementation Detail):** The first 43 bytes (the fixed header) are
 transmitted in plaintext so that relays can read dedup fields (like `reportId`) and
 mutate routing fields (like `ttl` and `corroborationCount`) without holding decryption
-keys. Only the `notes` field (bytes 42+) is compressed with LZ4 and encrypted.
+keys. Only the `notes` field (bytes 43+) is compressed with LZ4 and encrypted.
 
 **Encrypted Notes Blob Format (Noise_N_25519_ChaChaPoly_SHA256):**
 
@@ -238,7 +240,7 @@ keys. Only the `notes` field (bytes 42+) is compressed with LZ4 and encrypted.
 | 32                 | ciphertext         | variable      | ChaCha20-Poly1305 encrypted (LZ4-compressed notes)|
 | 32 + ct_len        | auth tag           | 16            | Poly1305 authentication tag                       |
 
-The `notesLength` field at header offset 40 stores the total length of this encrypted
+The `notesLength` field at header offset 41 stores the total length of this encrypted
 blob (32 + ciphertext_len + 16). Tier 3 uses its static X25519 private key to perform
 DH with the ephemeral public key, derive the symmetric key via HKDF-SHA256, and
 decrypt. Extracting the embedded public key from the APK gives zero decryption

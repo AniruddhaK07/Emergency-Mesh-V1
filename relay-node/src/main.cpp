@@ -32,8 +32,13 @@ void onBlePayloadReceived(const uint8_t* payload, size_t length) {
     } else {
         Serial.print("[Relay] Duplicate event detected. Corroboration count updated to ");
         Serial.println(newCorroborationCount);
-        // Prompt says: "On match: increment corroborationCount in the existing record, do NOT create a new LoRa TX"
-        // So we just drop it from forwarding.
+        
+        // Transmit minimal packet (header only) to update Tier 3's corroboration count
+        updateCorroborationCount(buffer, newCorroborationCount);
+        buffer[41] = 0; // notesLength (LSB)
+        buffer[42] = 0; // notesLength (MSB)
+        Serial.println("[Relay] Forwarding corroboration update via LoRa (header only).");
+        sendLoRaPacket(buffer, 43);
     }
     
     delete[] buffer;

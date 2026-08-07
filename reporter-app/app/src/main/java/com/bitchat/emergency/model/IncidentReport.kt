@@ -15,6 +15,7 @@ data class IncidentReport(
     val severity: Severity,
     val notes: String,
     val timestamp: Long,
+    val hasLocation: Boolean = true,
     val latitude: Double,
     val longitude: Double,
     val corroborationCount: Int = 1,

@@ -27,7 +27,7 @@ object PayloadPipeline {
         System.arraycopy(encrypted, 0, finalPayload, headerSize, encrypted.size)
         
         val buffer = ByteBuffer.wrap(finalPayload).order(ByteOrder.LITTLE_ENDIAN)
-        buffer.position(40)
+        buffer.position(41)
         buffer.putShort(encrypted.size.toShort())
         
         return finalPayload

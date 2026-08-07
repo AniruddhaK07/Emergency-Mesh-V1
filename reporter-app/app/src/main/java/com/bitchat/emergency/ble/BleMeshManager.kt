@@ -11,11 +11,11 @@ class BleMeshManager(private val context: Context) {
     private val advertiser = BleAdvertiser(context)
     private val scanner = BleScanner(context) { payload ->
         if (!dedup.isDuplicate(payload)) {
-            if (payload.size >= 24) {
-                val ttl = payload[23].toInt()
+            if (payload.size >= 25) {
+                val ttl = payload[24].toInt()
                 if (ttl > 1) {
                     val newPayload = payload.clone()
-                    newPayload[23] = (ttl - 1).toByte()
+                    newPayload[24] = (ttl - 1).toByte()
                     relayQueue.add(newPayload)
                 }
             }
