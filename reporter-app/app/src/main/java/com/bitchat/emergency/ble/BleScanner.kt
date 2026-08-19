@@ -38,6 +38,7 @@ class BleScanner(context: Context, private val onPayloadReceived: (ByteArray) ->
             
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setLegacy(false) // Accept both legacy and BLE 5 extended advertising results
             .build()
             
         try {

@@ -1,6 +1,10 @@
 #pragma once
 
-// LoRa SPI Pins for ESP32 DevKit v1
+// LoRa SPI Pins — originally mapped for ESP32 DevKit v1.
+// WARNING: ESP32-S3 DevKitC-1 has a different default SPI pinout.
+// These pin assignments MUST be re-verified against actual relay wiring
+// before Testing Stage 5. The values below are PLACEHOLDERS carried
+// forward from the ESP32 DevKit v1 configuration.
 #define LORA_NSS 18
 #define LORA_DIO0 26
 #define LORA_RESET 14
@@ -19,4 +23,4 @@
 // BLE Parameters
 #define BLE_SCAN_WINDOW_SEC 5
 #define BLE_SCAN_INTERVAL_SEC 10
-#define BLE_SERVICE_UUID "0000b17c-0000-1000-8000-00805f9b34fb" // Example UUID for bitchat
+#define BLE_SERVICE_UUID "0000b17c-0000-1000-8000-00805f9b34fb" // Mesh service UUID

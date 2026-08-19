@@ -28,17 +28,39 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
 };
 
 void setupBLEScanner(BlePayloadCallback cb) {
-    Serial.println("[BLE] Initializing Scanner...");
+    Serial.println("[BLE] Initializing Scanner (BLE 5 extended scan)...");
     payloadCallback = cb;
     
     BLEDevice::init("");
-    pBLEScan = BLEDevice::getScan(); // create new scan
+    pBLEScan = BLEDevice::getScan();
     pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
     pBLEScan->setActiveScan(true); 
     pBLEScan->setInterval(100);
     pBLEScan->setWindow(99); 
     
-    Serial.println("[BLE] Scanner Initialized.");
+    // BLE 5 Extended Scanning Configuration
+    // On ESP32-S3/C3 with Arduino-ESP32 v3.x (ESP-IDF 5.x), the NimBLE 
+    // stack supports extended scanning via BLEScan. The Arduino BLE library
+    // wraps NimBLE and should handle extended advertising PDUs (ADV_EXT_IND /
+    // AUX_ADV_IND) transparently in the scan callback.
+    //
+    // If the Arduino-ESP32 BLE library version does NOT automatically enable
+    // extended scanning, the following ESP-IDF NimBLE call may be needed
+    // directly (requires #include "esp_bt.h" and NimBLE headers):
+    //
+    //   struct ble_gap_ext_disc_params ext_params = {};
+    //   ext_params.itvl = 100;
+    //   ext_params.window = 99;
+    //   ext_params.passive = 0;
+    //   ble_gap_ext_disc(own_addr_type, 0, 0, 1, BLE_HCI_SCAN_FILT_NO_WL,
+    //                    NULL, &ext_params, scanCompleteCb, NULL);
+    //
+    // HARDWARE VALIDATION REQUIRED: This configuration has NOT been tested
+    // on real ESP32-S3 hardware. Verify that extended advertising payloads
+    // (>31 bytes) are received correctly in the scan callback before
+    // proceeding to Testing Stage 5.
+    
+    Serial.println("[BLE] Scanner Initialized (expecting BLE 5 extended advertisements).");
 }
 
 void loopBLEScanner() {

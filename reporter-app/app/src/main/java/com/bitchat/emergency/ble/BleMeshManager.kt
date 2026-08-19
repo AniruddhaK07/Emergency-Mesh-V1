@@ -28,6 +28,14 @@ class BleMeshManager(private val context: Context) {
     @Volatile private var isRunning = false
     @Volatile private var currentConfig: BleConfig? = null
     private var lastOwnPayload: ByteArray? = null
+
+    /**
+     * Maximum advertising data length supported by this device's BLE controller.
+     * Set by MeshForegroundService after querying BleAdvertiser.getMaxAdvertisingDataLength().
+     * PayloadPipeline uses this to cap notes length if the controller cannot carry
+     * the full worst-case ~370-byte payload.
+     */
+    var maxAdvertisingDataLength: Int = 1650 // BLE 5 default max; overridden at startup
     
     fun updateConfig(config: BleConfig) {
         this.currentConfig = config
@@ -56,7 +64,9 @@ class BleMeshManager(private val context: Context) {
                     if (payloadToAdvertise == null) {
                         val report = reportQueue.dequeue()
                         if (report != null) {
-                            payloadToAdvertise = PayloadPipeline.prepareForTransmission(report)
+                            payloadToAdvertise = PayloadPipeline.prepareForTransmission(
+                                report, maxAdvertisingDataLength
+                            )
                             lastOwnPayload = payloadToAdvertise
                             dedup.isDuplicate(payloadToAdvertise) // Prevent self relay
                         }

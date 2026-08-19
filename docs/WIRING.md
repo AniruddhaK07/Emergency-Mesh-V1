@@ -11,8 +11,8 @@ graph LR
     end
 
     subgraph "Tier 2 — Relay Nodes"
-        R1["ESP32 + RFM95<br/>~$60/unit<br/>Solar/Battery"]
-        R2["ESP32 + RFM95"]
+        R1["ESP32-S3 + RFM95<br/>~$60/unit<br/>Solar/Battery"]
+        R2["ESP32-S3 + RFM95"]
     end
 
     subgraph "Tier 3 — Command Node"
@@ -20,15 +20,29 @@ graph LR
         D["React Dashboard"]
     end
 
-    P1 -- "BLE<br/>10-100m" --> R1
-    P2 -- "BLE<br/>10-100m" --> R1
-    P3 -- "BLE<br/>10-100m" --> R2
-    P1 -. "BLE mesh<br/>store-and-forward" .-> P2
+    P1 -- "BLE 5 ext adv<br/>10-100m" --> R1
+    P2 -- "BLE 5 ext adv<br/>10-100m" --> R1
+    P3 -- "BLE 5 ext adv<br/>10-100m" --> R2
+    P1 -. "BLE 5 mesh<br/>store-and-forward" .-> P2
     R1 -- "LoRa 915MHz<br/>2-15km<br/>encrypted blob" --> C1
     R2 -- "LoRa 915MHz<br/>2-15km<br/>encrypted blob" --> C1
     C1 -- "Decrypt + Dedup" --> D
     C1 -. "Satellite/Starlink<br/>uplink (only internet)" .-> Internet["External Systems"]
 ```
+
+## Hardware Requirements
+
+| Tier | Component | Hard Requirement | Reason |
+|------|-----------|-----------------|--------|
+| 1 — Phones | Android device | **BLE 5 with extended advertising support** | Payloads (43–370 bytes) exceed legacy BLE's ~31-byte limit. Extended advertising PDUs (`ADV_EXT_IND`/`AUX_ADV_IND`) cannot be decoded by BLE 4.x radios. |
+| 1 — Phones | Android API | **minSdk 26** (Android 8.0) | `AdvertisingSet` API and BouncyCastle ChaCha20-Poly1305 AEAD both require API 26+. |
+| 2 — Relays | ESP32 variant | **ESP32-S3 or ESP32-C3** (BLE 5.0) | Classic ESP32 (ESP32-WROOM-32) has BLE 4.2 only — cannot receive extended advertising PDUs. |
+| 2 — Relays | LoRa module | SX1276 / RFM95W | Unchanged from original spec. |
+
+**Fallback on devices without BLE 5:** Report creation (UI, GPS, queue, encryption) still works.
+Mesh transmission is disabled at startup with a user-facing notification. The app checks
+`BluetoothAdapter.isLeExtendedAdvertisingSupported()` and `getLeMaximumAdvertisingDataLength()`
+before enabling the BLE mesh service. No silent failures.
 
 ## Power-Tier State Machine (Phone-Side)
 
@@ -72,7 +86,7 @@ stateDiagram-v2
 ```mermaid
 sequenceDiagram
     participant Phone as Reporter Phone (Tier 1)
-    participant Relay as ESP32 Relay (Tier 2)
+    participant Relay as ESP32-S3 Relay (Tier 2)
     participant Cmd as Command Node (Tier 3)
 
     Phone->>Relay: BLE advertisement (encrypted blob)

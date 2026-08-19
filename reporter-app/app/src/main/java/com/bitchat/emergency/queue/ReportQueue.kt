@@ -22,6 +22,10 @@ class ReportQueue(context: Context) {
     }
 
     fun dequeue(): IncidentReport? {
+        // Reload from disk to pick up reports enqueued by other components
+        // (e.g., ReportActivity writes to the same file but holds a separate
+        // ReportQueue instance). The file is the source of truth.
+        loadFromDisk()
         if (queue.isEmpty()) return null
         val report = queue.removeAt(0)
         saveToDisk()
