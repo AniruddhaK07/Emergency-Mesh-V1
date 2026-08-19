@@ -1,5 +1,18 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle, Clock, MapPin, Users, Activity, Flame, ShieldAlert } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { 
+  AlertTriangle, 
+  Clock, 
+  MapPin, 
+  Users, 
+  Activity, 
+  Flame, 
+  ShieldAlert, 
+  ArrowUpDown, 
+  Filter, 
+  Trash2, 
+  Radio, 
+  Navigation
+} from 'lucide-react';
 
 interface Report {
   reportId: string;
@@ -8,11 +21,16 @@ interface Report {
   casualtyCount: number;
   notes: string;
   timestamp: number;
+  hasLocation?: boolean;
   latitude: number;
   longitude: number;
   corroborationCount: number;
   ttl: number;
 }
+
+type SortOption = 'latest' | 'priority' | 'oldest' | 'casualties' | 'corroboration';
+type SeverityFilter = 'ALL' | 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+type TypeFilter = 'ALL' | 'TRAPPED' | 'INJURED' | 'FIRE' | 'NEED_EVAC';
 
 function calculateWeight(report: Report) {
   const severities = { LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };
@@ -22,164 +40,357 @@ function calculateWeight(report: Report) {
 
 function timeSince(timestamp: number) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  let interval = seconds / 31536000;
-  if (interval > 1) return Math.floor(interval) + " yr ago";
-  interval = seconds / 2592000;
-  if (interval > 1) return Math.floor(interval) + " mo ago";
-  interval = seconds / 86400;
-  if (interval > 1) return Math.floor(interval) + " d ago";
-  interval = seconds / 3600;
-  if (interval > 1) return Math.floor(interval) + " hr ago";
-  interval = seconds / 60;
-  if (interval > 1) return Math.floor(interval) + " min ago";
-  return Math.floor(seconds) + " s ago";
+  if (seconds < 5) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatExactTime(timestamp: number) {
+  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 const TypeIcon = ({ type }: { type: string }) => {
   switch (type) {
-    case 'FIRE': return <Flame className="w-5 h-5" />;
-    case 'TRAPPED': return <AlertTriangle className="w-5 h-5" />;
-    case 'INJURED': return <Activity className="w-5 h-5" />;
-    case 'NEED_EVAC': return <ShieldAlert className="w-5 h-5" />;
+    case 'FIRE': return <Flame className="w-5 h-5 text-orange-500" />;
+    case 'TRAPPED': return <AlertTriangle className="w-5 h-5 text-amber-400" />;
+    case 'INJURED': return <Activity className="w-5 h-5 text-red-400" />;
+    case 'NEED_EVAC': return <ShieldAlert className="w-5 h-5 text-cyan-400" />;
     default: return <AlertTriangle className="w-5 h-5" />;
   }
-}
+};
 
 export default function App() {
   const [reports, setReports] = useState<Report[]>([]);
   const [connected, setConnected] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('latest');
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('ALL');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [isClearing, setIsClearing] = useState(false);
 
-  useEffect(() => {
-    const fetchReports = async () => {
-      try {
-        const res = await fetch('http://localhost:3001/api/reports');
-        if (res.ok) {
-          const data = await res.json();
-          setReports(data);
-          setConnected(true);
-        } else {
-          setConnected(false);
-        }
-      } catch (err) {
+  const fetchReports = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/reports');
+      if (res.ok) {
+        const data = await res.json();
+        setReports(data);
+        setConnected(true);
+        setLastRefreshed(new Date());
+      } else {
         setConnected(false);
       }
-    };
+    } catch (err) {
+      setConnected(false);
+    }
+  };
 
+  useEffect(() => {
     fetchReports();
-    const interval = setInterval(fetchReports, 5000);
+    const interval = setInterval(fetchReports, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleClearAll = async () => {
+    if (!window.confirm("Clear all reports from the server?")) return;
+    setIsClearing(true);
+    try {
+      await fetch('http://localhost:3001/api/reports', { method: 'DELETE' });
+      setReports([]);
+    } catch (e) {
+      console.error("Failed to clear reports", e);
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  // Filter and sort reports in memory
+  const processedReports = useMemo(() => {
+    let result = [...reports];
+
+    // Filter by Severity
+    if (severityFilter !== 'ALL') {
+      result = result.filter(r => r.severity === severityFilter);
+    }
+
+    // Filter by Type
+    if (typeFilter !== 'ALL') {
+      result = result.filter(r => r.emergencyType === typeFilter);
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'latest':
+          return b.timestamp - a.timestamp;
+        case 'oldest':
+          return a.timestamp - b.timestamp;
+        case 'priority': {
+          const weightDiff = calculateWeight(b) - calculateWeight(a);
+          if (Math.abs(weightDiff) > 0.001) return weightDiff;
+          return b.timestamp - a.timestamp;
+        }
+        case 'casualties':
+          return (b.casualtyCount || 0) - (a.casualtyCount || 0);
+        case 'corroboration':
+          return (b.corroborationCount || 0) - (a.corroborationCount || 0);
+        default:
+          return b.timestamp - a.timestamp;
+      }
+    });
+
+    return result;
+  }, [reports, sortBy, severityFilter, typeFilter]);
 
   const stats = {
     total: reports.length,
     critical: reports.filter(r => r.severity === 'CRITICAL').length,
     high: reports.filter(r => r.severity === 'HIGH').length,
+    medium: reports.filter(r => r.severity === 'MEDIUM').length,
+    low: reports.filter(r => r.severity === 'LOW').length,
   };
 
   return (
-    <div className="min-h-screen bg-black text-gray-300 p-4 font-mono">
+    <div className="min-h-screen bg-neutral-950 text-gray-300 p-4 lg:p-6 font-mono">
       {/* Header */}
-      <header className="flex justify-between items-center border-b border-gray-800 pb-4 mb-6">
-        <h1 className="text-xl font-bold uppercase tracking-widest text-white">Emergency Mesh Command</h1>
-        <div className="flex items-center gap-2 text-sm">
-          <span className={`w-3 h-3 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-          {connected ? 'LIVE (PORT 3001)' : 'DISCONNECTED'}
+      <header className="flex flex-wrap justify-between items-center border-b border-neutral-800 pb-4 mb-6 gap-3">
+        <div className="flex items-center gap-3">
+          <div className="bg-red-500/10 p-2 border border-red-500/30 rounded">
+            <Radio className="w-6 h-6 text-red-500 animate-pulse" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black uppercase tracking-widest text-white">Emergency Mesh Command</h1>
+            <p className="text-xs text-neutral-500">Tier 3 Operational Incident Dashboard</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded">
+            <span className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]'}`}></span>
+            <span className="font-semibold text-neutral-300">{connected ? 'MESH ONLINE' : 'DISCONNECTED'}</span>
+          </div>
+
+          <button 
+            onClick={handleClearAll}
+            disabled={isClearing || reports.length === 0}
+            className="flex items-center gap-1.5 bg-red-950/40 hover:bg-red-900/60 border border-red-800/50 text-red-400 px-3 py-1.5 rounded transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+            title="Clear all stored reports"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>CLEAR ALL</span>
+          </button>
         </div>
       </header>
 
-      {/* StatsBar */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="bg-gray-900 border border-gray-800 p-4">
-          <div className="text-gray-500 text-xs mb-1">TOTAL REPORTS</div>
+      {/* Stats Summary Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <div className="bg-neutral-900/80 border border-neutral-800 p-3.5 rounded">
+          <div className="text-neutral-500 text-[11px] font-semibold tracking-wider mb-1">TOTAL REPORTS</div>
           <div className="text-2xl font-bold text-white">{stats.total}</div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 p-4">
-          <div className="text-gray-500 text-xs mb-1">CRITICAL INCIDENTS</div>
-          <div className="text-2xl font-bold text-critical">{stats.critical}</div>
+        <div className="bg-neutral-900/80 border border-red-900/40 p-3.5 rounded">
+          <div className="text-red-400 text-[11px] font-semibold tracking-wider mb-1">CRITICAL</div>
+          <div className="text-2xl font-bold text-red-500">{stats.critical}</div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 p-4">
-          <div className="text-gray-500 text-xs mb-1">HIGH SEVERITY</div>
-          <div className="text-2xl font-bold text-gray-200">{stats.high}</div>
+        <div className="bg-neutral-900/80 border border-orange-900/40 p-3.5 rounded">
+          <div className="text-orange-400 text-[11px] font-semibold tracking-wider mb-1">HIGH SEVERITY</div>
+          <div className="text-2xl font-bold text-orange-400">{stats.high}</div>
+        </div>
+        <div className="bg-neutral-900/80 border border-neutral-800 p-3.5 rounded">
+          <div className="text-neutral-400 text-[11px] font-semibold tracking-wider mb-1">MED / LOW</div>
+          <div className="text-2xl font-bold text-neutral-300">{stats.medium + stats.low}</div>
         </div>
       </div>
 
-      {/* ReportList */}
-      <div className="space-y-4">
-        <div className="text-xs text-gray-500 mb-2 uppercase tracking-wide">
-          Reports sorted by operational priority
+      {/* Controls & Filter Toolbar */}
+      <div className="bg-neutral-900 border border-neutral-800 p-4 rounded mb-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          
+          {/* Sorting Control */}
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="w-4 h-4 text-cyan-400" />
+            <span className="text-xs font-semibold text-neutral-400">SORT BY:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              className="bg-neutral-950 border border-neutral-700 text-white text-xs px-3 py-1.5 rounded focus:outline-none focus:border-cyan-500 cursor-pointer font-mono"
+            >
+              <option value="latest">⚡ Most Recent First (Default)</option>
+              <option value="priority">🚨 Priority Weight (Critical First)</option>
+              <option value="oldest">⏳ Oldest First</option>
+              <option value="casualties">👥 Casualties (High to Low)</option>
+              <option value="corroboration">🔄 Corroborations (High to Low)</option>
+            </select>
+          </div>
+
+          {/* Quick Info */}
+          <div className="text-xs text-neutral-500">
+            Showing <span className="text-white font-bold">{processedReports.length}</span> of <span className="text-white font-bold">{reports.length}</span> reports (Updated {timeSince(lastRefreshed.getTime())})
+          </div>
         </div>
-        
-        {reports.map((report) => {
+
+        {/* Filters Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-neutral-800 text-xs">
+          {/* Severity Filter */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-neutral-500 font-semibold mr-1 flex items-center gap-1">
+              <Filter className="w-3 h-3" /> SEVERITY:
+            </span>
+            {(['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as SeverityFilter[]).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSeverityFilter(s)}
+                className={`px-2.5 py-1 rounded text-[11px] font-bold tracking-wide transition cursor-pointer ${
+                  severityFilter === s
+                    ? s === 'CRITICAL' ? 'bg-red-600 text-white shadow-[0_0_8px_rgba(220,38,38,0.5)]'
+                      : s === 'HIGH' ? 'bg-orange-600 text-white'
+                      : 'bg-cyan-600 text-white'
+                    : 'bg-neutral-950 border border-neutral-800 text-neutral-400 hover:border-neutral-700'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          {/* Type Filter */}
+          <div className="flex items-center gap-1.5 flex-wrap md:justify-end">
+            <span className="text-neutral-500 font-semibold mr-1">TYPE:</span>
+            {(['ALL', 'TRAPPED', 'INJURED', 'FIRE', 'NEED_EVAC'] as TypeFilter[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTypeFilter(t)}
+                className={`px-2.5 py-1 rounded text-[11px] font-bold tracking-wide transition cursor-pointer ${
+                  typeFilter === t
+                    ? 'bg-neutral-200 text-black shadow-sm'
+                    : 'bg-neutral-950 border border-neutral-800 text-neutral-400 hover:border-neutral-700'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Reports Feed */}
+      <div className="space-y-3">
+        {processedReports.map((report) => {
           const weight = calculateWeight(report).toFixed(2);
           const isCritical = report.severity === 'CRITICAL';
+          const isHigh = report.severity === 'HIGH';
+          const isRecent = (Date.now() - report.timestamp) < 60000; // Received < 60s ago
           
           return (
-            <div key={report.reportId} 
-                 className={`border p-4 bg-gray-900 flex flex-col gap-3 ${
-                   isCritical ? 'border-critical/50 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'border-gray-800'
-                 }`}>
-              
+            <div 
+              key={report.reportId} 
+              className={`border p-4 bg-neutral-900 rounded-sm transition flex flex-col gap-3 relative ${
+                isCritical 
+                  ? 'border-red-600/70 bg-gradient-to-r from-red-950/20 to-neutral-900 shadow-[0_0_15px_rgba(239,68,68,0.15)]' 
+                  : isHigh 
+                  ? 'border-orange-600/50 bg-gradient-to-r from-orange-950/15 to-neutral-900' 
+                  : 'border-neutral-800'
+              }`}
+            >
+              {/* Top Banner */}
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-sm ${isCritical ? 'bg-critical/20 text-critical' : 'bg-gray-800 text-gray-400'}`}>
+                  <div className={`p-2.5 rounded-sm ${
+                    isCritical ? 'bg-red-500/20 border border-red-500/40' : 
+                    isHigh ? 'bg-orange-500/20 border border-orange-500/40' : 
+                    'bg-neutral-800 border border-neutral-700'
+                  }`}>
                     <TypeIcon type={report.emergencyType} />
                   </div>
                   <div>
-                    <div className="font-bold text-lg text-white flex items-center gap-2">
-                      {report.emergencyType}
-                      <span className={`text-xs px-2 py-0.5 rounded-sm ${
-                        isCritical ? 'bg-critical text-black font-bold' : 'bg-gray-800 text-gray-300'
+                    <div className="font-bold text-base text-white flex items-center gap-2">
+                      <span>{report.emergencyType}</span>
+                      
+                      <span className={`text-[10px] uppercase font-black px-2 py-0.5 rounded ${
+                        isCritical ? 'bg-red-600 text-white' : 
+                        isHigh ? 'bg-orange-600 text-white' : 
+                        'bg-neutral-800 text-neutral-300'
                       }`}>
                         {report.severity}
                       </span>
+
+                      {isRecent && (
+                        <span className="text-[10px] bg-green-500/20 border border-green-500/50 text-green-400 font-bold px-1.5 py-0.5 rounded animate-pulse">
+                          NEW
+                        </span>
+                      )}
                     </div>
-                    <div className="text-xs text-gray-500 font-mono mt-1">
-                      ID: {report.reportId.split('-')[0]}...
+                    
+                    <div className="text-[11px] text-neutral-500 font-mono mt-0.5">
+                      REPORT ID: <span className="text-neutral-400">{report.reportId}</span>
                     </div>
                   </div>
                 </div>
                 
+                {/* Time & Priority */}
                 <div className="text-right">
-                  <div className="text-xs text-gray-400 flex items-center gap-1 justify-end">
-                    <Clock className="w-3 h-3" />
-                    {timeSince(report.timestamp)}
+                  <div className="text-xs text-neutral-300 font-semibold flex items-center gap-1.5 justify-end">
+                    <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>{timeSince(report.timestamp)}</span>
+                    <span className="text-[10px] text-neutral-500 font-normal">({formatExactTime(report.timestamp)})</span>
                   </div>
-                  <div className="text-[10px] text-gray-600 mt-1">
-                    PRIORITY WGT: {weight}
+                  <div className="text-[10px] text-neutral-500 mt-1 font-mono">
+                    PRIORITY WEIGHT: <span className="text-cyan-400 font-bold">{weight}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-4 gap-2 text-sm mt-2 border-t border-gray-800 pt-3">
-                <div className="flex items-center gap-2 text-gray-400">
-                  <Users className="w-4 h-4" />
-                  <span>{report.casualtyCount} CASUALTIES</span>
+              {/* Data Badges Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs border-t border-neutral-800/80 pt-3">
+                <div className="flex items-center gap-2 text-neutral-400 bg-neutral-950/60 px-2.5 py-1.5 rounded border border-neutral-800/50">
+                  <Users className="w-3.5 h-3.5 text-neutral-400" />
+                  <span><strong className="text-white">{report.casualtyCount}</strong> CASUALTIES</span>
                 </div>
-                <div className="flex items-center gap-2 text-gray-400">
-                  <Activity className="w-4 h-4" />
-                  <span>{report.corroborationCount} CORROB</span>
+                
+                <div className="flex items-center gap-2 text-neutral-400 bg-neutral-950/60 px-2.5 py-1.5 rounded border border-neutral-800/50">
+                  <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                  <span><strong className="text-cyan-300">{report.corroborationCount}</strong> CORROBORATION</span>
                 </div>
-                <div className="flex items-center gap-2 text-gray-400">
-                  <MapPin className="w-4 h-4" />
-                  <span>{report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}</span>
+                
+                <div className="flex items-center gap-2 text-neutral-400 bg-neutral-950/60 px-2.5 py-1.5 rounded border border-neutral-800/50">
+                  <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="truncate">
+                    {report.hasLocation !== false ? (
+                      <span className="text-neutral-200">{report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}</span>
+                    ) : (
+                      <span className="text-amber-400 italic">NULL_LOC (RELAY BOUND)</span>
+                    )}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2 text-gray-400 justify-end">
-                  <span className="text-xs bg-gray-800 px-2 py-1">TTL: {report.ttl}</span>
+                
+                <div className="flex items-center gap-2 text-neutral-400 bg-neutral-950/60 px-2.5 py-1.5 rounded border border-neutral-800/50 justify-between">
+                  <div className="flex items-center gap-1">
+                    <Navigation className="w-3 h-3 text-neutral-500" />
+                    <span>HOPS:</span>
+                  </div>
+                  <span className="text-neutral-200 font-bold bg-neutral-800 px-1.5 py-0.5 rounded text-[10px]">TTL {report.ttl}</span>
                 </div>
               </div>
 
+              {/* Decrypted Notes */}
               {report.notes && (
-                <div className="mt-2 text-sm text-gray-300 bg-black/50 p-3 border border-gray-800 rounded-sm">
-                  {report.notes}
+                <div className="text-xs text-neutral-200 bg-neutral-950/90 p-3 border border-neutral-800 rounded font-mono">
+                  <div className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">Decrypted Voice/Text Notes:</div>
+                  <div className="whitespace-pre-wrap">{report.notes}</div>
                 </div>
               )}
             </div>
           );
         })}
         
-        {reports.length === 0 && (
-          <div className="text-center text-gray-500 py-10 border border-gray-800 border-dashed">
-            No incoming reports...
+        {processedReports.length === 0 && (
+          <div className="text-center text-neutral-500 py-16 border border-neutral-800/80 border-dashed rounded bg-neutral-900/30">
+            <div className="text-sm font-semibold">No emergency reports match the current filter</div>
+            <div className="text-xs text-neutral-600 mt-1">Listening for incoming mesh broadcasts...</div>
           </div>
         )}
       </div>

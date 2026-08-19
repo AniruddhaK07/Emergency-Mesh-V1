@@ -255,6 +255,12 @@ app.post('/api/reports', (req, res) => {
   res.json({ success: true });
 });
 
+// Clear all reports (useful for testing and resetting dashboard)
+app.delete('/api/reports', (req, res) => {
+  reports = [];
+  res.json({ success: true, message: 'All reports cleared' });
+});
+
 // Binary payload endpoint — accepts base64-encoded raw payloads from the gateway,
 // decrypts the Noise_N encrypted notes, deserializes, and stores.
 app.post('/api/reports/raw', (req, res) => {
