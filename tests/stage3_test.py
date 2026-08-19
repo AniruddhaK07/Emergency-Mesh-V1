@@ -1,6 +1,9 @@
 import asyncio
+import base64
+import json
 import os
 import struct
+import urllib.request
 import uuid
 from bleak import BleakScanner
 
@@ -13,6 +16,8 @@ import lz4.block
 SERVICE_UUID = "0000b17c-0000-1000-8000-00805f9b34fb"
 PROTOCOL_NAME = b'Noise_N_25519_ChaChaPoly_SHA256'
 TIER3_STATIC_PUBLIC_KEY_HEX = '7bfc76e82f21c7432de9155866a6947f49ba3cae8711ffc3af939c193b3d1644'
+INGEST_URL = "http://localhost:3001/api/reports/raw"
+HEADER_SIZE = 43
 
 def load_private_key():
     key = os.environ.get("TIER3_PRIVATE_KEY")
@@ -82,30 +87,31 @@ EMERGENCY_TYPES = ['TRAPPED', 'INJURED', 'FIRE', 'NEED_EVAC']
 SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
 
 def parse_payload(payload):
-    if len(payload) < 42:
-        print(f"Payload too short: {len(payload)} bytes")
+    if len(payload) < HEADER_SIZE:
+        print(f"Payload too short: {len(payload)} bytes (need at least {HEADER_SIZE})")
         return None
 
-    # Parse 42-byte header
+    # Parse 43-byte header per WIRING.md source of truth
     version = payload[0]
     emergency_type = EMERGENCY_TYPES[payload[1]] if payload[1] < len(EMERGENCY_TYPES) else 'UNKNOWN'
     severity = SEVERITIES[payload[2]] if payload[2] < len(SEVERITIES) else 'UNKNOWN'
     casualty_count = struct.unpack_from("<H", payload, 3)[0]
     timestamp = struct.unpack_from("<q", payload, 5)[0]
-    latitude = struct.unpack_from("<f", payload, 13)[0]
-    longitude = struct.unpack_from("<f", payload, 17)[0]
-    corroboration_count = struct.unpack_from("<H", payload, 21)[0]
-    ttl = payload[23]
+    has_location = bool(payload[13])
+    latitude = struct.unpack_from("<f", payload, 14)[0]
+    longitude = struct.unpack_from("<f", payload, 18)[0]
+    corroboration_count = struct.unpack_from("<H", payload, 22)[0]
+    ttl = payload[24]
     
-    # reportId: 16 bytes, big-endian UUID
-    uuid_bytes = payload[24:40]
+    # reportId: 16 bytes at offset 25, big-endian UUID
+    uuid_bytes = payload[25:41]
     report_id = str(uuid.UUID(bytes=uuid_bytes))
     
-    notes_length = struct.unpack_from("<H", payload, 40)[0]
+    notes_length = struct.unpack_from("<H", payload, 41)[0]
     notes = ""
     
-    if notes_length > 0 and len(payload) > 42:
-        encrypted_notes = payload[42:42+notes_length]
+    if notes_length > 0 and len(payload) > HEADER_SIZE:
+        encrypted_notes = payload[HEADER_SIZE:HEADER_SIZE + notes_length]
         print(f"Encrypted blob size: {len(encrypted_notes)}")
         try:
             decrypted_compressed = noise_n_decrypt(encrypted_notes)
@@ -128,6 +134,7 @@ def parse_payload(payload):
         "severity": severity,
         "casualtyCount": casualty_count,
         "timestamp": timestamp,
+        "hasLocation": has_location,
         "latitude": latitude,
         "longitude": longitude,
         "corroborationCount": corroboration_count,
@@ -135,37 +142,64 @@ def parse_payload(payload):
         "notes": notes
     }
 
+def forward_to_ingest(payload):
+    try:
+        b64_payload = base64.b64encode(payload).decode('ascii')
+        data = json.dumps({"payload": b64_payload}).encode('utf-8')
+        req = urllib.request.Request(
+            INGEST_URL,
+            data=data,
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            resp_body = resp.read().decode('utf-8')
+            print(f"-> Ingest server response ({resp.status}): {resp_body}")
+    except Exception as e:
+        print(f"-> Warning: Failed to forward to ingest server ({INGEST_URL}): {e}")
+
 async def main():
     print(f"Scanning for BLE advertisements with Service UUID: {SERVICE_UUID}...")
+    print(f"Forwarding received payloads to: {INGEST_URL}")
+    print("Press Ctrl+C to stop scanning.\n")
     
-    stop_event = asyncio.Event()
+    seen_hashes = set()
 
     def detection_callback(device, advertisement_data):
         service_data = advertisement_data.service_data
-        
-        # Bleak returns service UUIDs in lowercase
         target_uuid = SERVICE_UUID.lower()
         
         for uuid_key, payload in service_data.items():
             if uuid_key.lower() == target_uuid:
-                print(f"\n--- Received Report from {device.address} ---")
-                print(f"Raw payload size: {len(payload)} bytes")
+                # Deduplicate identical consecutive raw payloads in console
+                payload_hash = hashlib.sha256(payload).hexdigest()
+                is_repeat = payload_hash in seen_hashes
+                seen_hashes.add(payload_hash)
+                
+                status_str = "Repeat advertisement" if is_repeat else "New report payload"
+                print(f"\n--- Received {status_str} from {device.address} ({len(payload)} bytes) ---")
+                
                 report = parse_payload(payload)
                 if report:
                     for k, v in report.items():
                         print(f"  {k}: {v}")
-                stop_event.set()
+                
+                # Forward to dashboard ingest server
+                forward_to_ingest(payload)
 
     scanner = BleakScanner(detection_callback)
     await scanner.start()
     
-    print("Waiting for report (timeout 30s)...")
     try:
-        await asyncio.wait_for(stop_event.wait(), timeout=30.0)
-    except asyncio.TimeoutError:
-        print("Scan timed out. No matching advertisement found.")
+        while True:
+            await asyncio.sleep(1.0)
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        print("\nStopping BLE scanner...")
     finally:
         await scanner.stop()
+        print("BLE scanner stopped.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
