@@ -264,3 +264,7 @@ After LZ4 compression and Noise_N encryption, expect ~320–370 bytes worst case
 for a full payload (20 bytes more than the previous AES-GCM stub due to the 32-byte
 ephemeral key replacing the 12-byte nonce) — still within BLE extended advertisement
 and LoRa packet limits.
+
+## Future Architecture & Hardening Roadmap
+For detailed edge case analysis, operational disaster critiques (e.g. delivery ACKs, relay OOM eviction, replay attack mitigations, clock drift handling), see [`docs/FUTURE_IMPROVEMENTS.md`](file:///C:/Users/ASUS/Desktop/A/projects/bitchat-exp/docs/FUTURE_IMPROVEMENTS.md).
+
